@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
 """
-Image Factory – One-command launcher.
+Skool Video Downloader – One-command launcher.
 
 Usage:
-    python run.py            # Start the app (opens browser automatically)
+    python run.py              # Start the app (opens browser automatically)
     python run.py --port 5555  # Use a custom port
     python run.py --no-browser # Don't auto-open the browser
 """
 
 import argparse
-import sys
 import threading
 import time
 import webbrowser
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Image Factory – Local Print-on-Demand Image Prep")
+    parser = argparse.ArgumentParser(description="Skool Video Downloader")
     parser.add_argument("--port", type=int, default=5555, help="Port to run on (default: 5555)")
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open the browser")
     args = parser.parse_args()
 
-    # Auto-open browser after a short delay
     if not args.no_browser:
         def open_browser():
             time.sleep(2)
@@ -32,7 +30,7 @@ def main():
 
     print(f"""
     ╔══════════════════════════════════════════╗
-    ║         IMAGE FACTORY  v1.0.0            ║
+    ║     SKOOL VIDEO DOWNLOADER  v1.0.0       ║
     ║                                          ║
     ║   Running at: http://localhost:{args.port}     ║
     ║                                          ║

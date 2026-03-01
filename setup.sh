@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# ── Image Factory – Setup Script (macOS / Linux) ────────────────────
+# ── Skool Video Downloader – Setup Script (macOS / Linux) ────────────
 #
-# This script installs everything you need to run Image Factory.
+# This script installs everything you need to run the downloader.
 # Run it once, then use "python run.py" to start the app.
 #
 set -e
 
 echo ""
 echo "  ╔══════════════════════════════════════════╗"
-echo "  ║       IMAGE FACTORY – SETUP              ║"
+echo "  ║   SKOOL VIDEO DOWNLOADER – SETUP         ║"
 echo "  ╚══════════════════════════════════════════╝"
 echo ""
 
@@ -31,19 +31,16 @@ fi
 echo "  Activating virtual environment..."
 source venv/bin/activate
 
-echo "  Installing dependencies (this may take a few minutes)..."
+echo "  Installing dependencies..."
 pip install --upgrade pip -q
 pip install -r requirements.txt -q
 
 echo ""
-echo "  ✓ Setup complete!"
+echo "  Setup complete!"
 echo ""
 echo "  TO RUN THE APP:"
 echo "  ────────────────────────────────────"
 echo "  source venv/bin/activate"
 echo "  python run.py"
 echo "  ────────────────────────────────────"
-echo ""
-echo "  Or use the one-liner:"
-echo "  source venv/bin/activate && python run.py"
 echo ""

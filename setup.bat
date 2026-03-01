@@ -1,13 +1,13 @@
 @echo off
-REM ── Image Factory – Setup Script (Windows) ────────────────────────
+REM ── Skool Video Downloader – Setup Script (Windows) ────────────────
 REM
-REM This script installs everything you need to run Image Factory.
+REM This script installs everything you need to run the downloader.
 REM Run it once, then use "python run.py" to start the app.
 REM
 
 echo.
 echo   ╔══════════════════════════════════════════╗
-echo   ║       IMAGE FACTORY – SETUP              ║
+echo   ║   SKOOL VIDEO DOWNLOADER – SETUP         ║
 echo   ╚══════════════════════════════════════════╝
 echo.
 
@@ -33,7 +33,7 @@ if not exist "venv" (
 echo   Activating virtual environment...
 call venv\Scripts\activate.bat
 
-echo   Installing dependencies (this may take a few minutes)...
+echo   Installing dependencies...
 pip install --upgrade pip -q
 pip install -r requirements.txt -q
 
@@ -45,8 +45,5 @@ echo   ────────────────────────�
 echo   venv\Scripts\activate.bat
 echo   python run.py
 echo   ────────────────────────────────────
-echo.
-echo   Or use the one-liner:
-echo   venv\Scripts\activate.bat ^&^& python run.py
 echo.
 pause

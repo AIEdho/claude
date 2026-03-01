@@ -1,4 +1,4 @@
-/* ── Image Factory – CSS ─────────────────────────────────────────── */
+/* ── Skool Video Downloader – CSS ──────────────────────────────────── */
 
 :root {
   --bg: #0f1117;
@@ -39,7 +39,7 @@ body {
 .top-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 12px 20px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
@@ -53,17 +53,60 @@ body {
   color: var(--accent);
 }
 
+.auth-status {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+.auth-status.connected {
+  background: rgba(0,184,148,0.15);
+  color: var(--green);
+}
+.auth-status.disconnected {
+  background: rgba(231,76,60,0.15);
+  color: var(--red);
+}
+
+/* ── Download Bar ──────────────────────────────────────────────── */
+
+.download-bar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.download-bar input {
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.download-bar input:focus {
+  border-color: var(--accent);
+}
+.download-bar input::placeholder {
+  color: var(--text-dim);
+}
+
 .main-area {
   display: flex;
   flex: 1;
   overflow: hidden;
 }
 
-/* ── Left panel (Jobs list) ─────────────────────────────────────── */
+/* ── Left panel (Downloads list) ──────────────────────────────── */
 
 .jobs-panel {
-  width: 320px;
-  min-width: 320px;
+  width: 360px;
+  min-width: 360px;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
   display: flex;
@@ -72,13 +115,16 @@ body {
 }
 
 .jobs-panel .panel-header {
-  padding: 14px 16px;
+  padding: 12px 16px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .jobs-list {
@@ -95,7 +141,6 @@ body {
   border: 1px solid transparent;
   transition: all 0.15s;
 }
-
 .job-card:hover { background: var(--bg-hover); }
 .job-card.active { background: var(--bg-card); border-color: var(--accent); }
 
@@ -105,7 +150,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .job-card .job-meta {
@@ -116,6 +161,25 @@ body {
   gap: 8px;
 }
 
+/* Progress bar */
+.progress-bar-wrap {
+  width: 100%;
+  height: 4px;
+  background: var(--bg);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  background: var(--accent);
+}
+.progress-bar.done { background: var(--green); }
+.progress-bar.failed { background: var(--red); }
+
+/* Badges */
 .badge {
   display: inline-block;
   padding: 2px 8px;
@@ -125,11 +189,11 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
-
-.badge.queued    { background: rgba(116,185,255,0.15); color: var(--blue); }
-.badge.processing{ background: rgba(253,203,110,0.15); color: var(--yellow); }
-.badge.done      { background: rgba(0,184,148,0.15); color: var(--green); }
-.badge.failed    { background: rgba(231,76,60,0.15); color: var(--red); }
+.badge.queued      { background: rgba(116,185,255,0.15); color: var(--blue); }
+.badge.extracting  { background: rgba(253,203,110,0.15); color: var(--yellow); }
+.badge.downloading { background: rgba(108,92,231,0.15); color: var(--accent); }
+.badge.done        { background: rgba(0,184,148,0.15); color: var(--green); }
+.badge.failed      { background: rgba(231,76,60,0.15); color: var(--red); }
 
 .jobs-empty {
   padding: 40px 20px;
@@ -138,7 +202,7 @@ body {
   font-size: 13px;
 }
 
-/* ── Detail panel ───────────────────────────────────────────────── */
+/* ── Detail panel ──────────────────────────────────────────────── */
 
 .detail-panel {
   flex: 1;
@@ -151,17 +215,39 @@ body {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text-dim);
-  font-size: 15px;
 }
 
+.welcome-box {
+  max-width: 420px;
+  text-align: left;
+}
+.welcome-box h2 {
+  font-size: 20px;
+  margin-bottom: 16px;
+  color: var(--text);
+}
+.welcome-box ol {
+  padding-left: 20px;
+  line-height: 2;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+.welcome-box ol strong {
+  color: var(--text);
+}
+.welcome-box .dim {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* Detail content */
 .detail-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
-
 .detail-header h2 {
   font-size: 18px;
   font-weight: 700;
@@ -170,16 +256,11 @@ body {
   text-overflow: ellipsis;
 }
 
-.detail-actions {
-  display: flex;
-  gap: 8px;
-}
-
 .detail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 24px;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 .detail-card {
@@ -188,7 +269,6 @@ body {
   padding: 16px;
   border: 1px solid var(--border);
 }
-
 .detail-card h3 {
   font-size: 12px;
   font-weight: 600;
@@ -197,59 +277,15 @@ body {
   letter-spacing: 0.5px;
   margin-bottom: 12px;
 }
-
 .detail-card.full-width {
   grid-column: 1 / -1;
 }
 
-/* Steps checklist */
-.step-list { list-style: none; }
-.step-list li {
-  padding: 6px 0;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.step-icon {
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  flex-shrink: 0;
-}
-.step-icon.pending  { background: var(--bg-hover); color: var(--text-dim); }
-.step-icon.running  { background: rgba(253,203,110,0.2); color: var(--yellow); animation: pulse 1s infinite; }
-.step-icon.done     { background: rgba(0,184,148,0.2); color: var(--green); }
-.step-icon.skipped  { background: var(--bg-hover); color: var(--text-dim); }
-.step-icon.failed   { background: rgba(231,76,60,0.2); color: var(--red); }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* Settings items */
-.setting-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  padding: 4px 0;
-}
-.setting-row .label {
-  color: var(--text-dim);
-  min-width: 100px;
-}
-
-/* Info rows */
 .info-row {
   display: flex;
   gap: 8px;
   font-size: 13px;
-  padding: 3px 0;
+  padding: 4px 0;
 }
 .info-row .label {
   color: var(--text-dim);
@@ -260,23 +296,36 @@ body {
   word-break: break-all;
 }
 
-/* Output files */
-.output-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0;
+/* Big progress */
+.big-progress {
+  margin: 20px 0;
+}
+.big-progress-bar-wrap {
+  width: 100%;
+  height: 10px;
+  background: var(--bg);
+  border-radius: 5px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.big-progress-bar {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.3s ease;
+  background: linear-gradient(90deg, var(--accent), var(--blue));
+}
+.big-progress-bar.done {
+  background: var(--green);
+}
+.big-progress-bar.failed {
+  background: var(--red);
+}
+.big-progress-text {
   font-size: 13px;
-}
-.output-item a {
-  color: var(--accent);
-  text-decoration: none;
-}
-.output-item a:hover {
-  text-decoration: underline;
+  color: var(--text-dim);
+  text-align: center;
 }
 
-/* Error box */
 .error-box {
   background: rgba(231,76,60,0.1);
   border: 1px solid rgba(231,76,60,0.3);
@@ -288,7 +337,17 @@ body {
   white-space: pre-wrap;
 }
 
-/* ── Buttons ────────────────────────────────────────────────────── */
+.success-box {
+  background: rgba(0,184,148,0.1);
+  border: 1px solid rgba(0,184,148,0.3);
+  border-radius: var(--radius);
+  padding: 14px;
+  color: var(--green);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────── */
 
 .btn {
   padding: 8px 16px;
@@ -303,53 +362,16 @@ body {
   gap: 6px;
   white-space: nowrap;
 }
-
 .btn-primary { background: var(--accent); color: #fff; }
 .btn-primary:hover { background: var(--accent-hover); }
-
 .btn-secondary { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); }
 .btn-secondary:hover { background: var(--bg-hover); }
-
 .btn-success { background: var(--green); color: #fff; }
-.btn-danger  { background: var(--red); color: #fff; }
-
+.btn-danger { background: var(--red); color: #fff; }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
-
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Toggle */
-.toggle-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-.toggle {
-  position: relative;
-  width: 40px; height: 22px;
-  cursor: pointer;
-}
-.toggle input { display: none; }
-.toggle .slider {
-  position: absolute; inset: 0;
-  background: var(--bg-card);
-  border-radius: 11px;
-  border: 1px solid var(--border);
-  transition: 0.2s;
-}
-.toggle .slider::before {
-  content: '';
-  position: absolute;
-  width: 16px; height: 16px;
-  left: 2px; top: 2px;
-  background: var(--text-dim);
-  border-radius: 50%;
-  transition: 0.2s;
-}
-.toggle input:checked + .slider { background: var(--accent); border-color: var(--accent); }
-.toggle input:checked + .slider::before { transform: translateX(18px); background: #fff; }
-
-/* ── Settings Modal ─────────────────────────────────────────────── */
+/* ── Settings Modal ────────────────────────────────────────────── */
 
 .modal-overlay {
   display: none;
@@ -372,6 +394,7 @@ body {
   padding: 24px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
+.modal-wide { width: 700px; }
 
 .modal h2 {
   font-size: 18px;
@@ -381,7 +404,6 @@ body {
 .modal-section {
   margin-bottom: 20px;
 }
-
 .modal-section h3 {
   font-size: 13px;
   font-weight: 600;
@@ -395,20 +417,20 @@ body {
 
 .form-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   margin-bottom: 10px;
 }
-
 .form-row label {
   font-size: 13px;
-  min-width: 160px;
+  min-width: 130px;
   color: var(--text-dim);
+  padding-top: 7px;
 }
-
 .form-row input[type="text"],
 .form-row input[type="number"],
-.form-row select {
+.form-row select,
+.form-row textarea {
   flex: 1;
   padding: 7px 10px;
   background: var(--bg-card);
@@ -416,12 +438,24 @@ body {
   border-radius: 6px;
   color: var(--text);
   font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
 }
-
 .form-row input:focus,
-.form-row select:focus {
+.form-row select:focus,
+.form-row textarea:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.help-text {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-top: 4px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border-radius: 6px;
 }
 
 .modal-footer {
@@ -432,44 +466,56 @@ body {
   border-top: 1px solid var(--border);
 }
 
-/* ── Decision banner ────────────────────────────────────────────── */
+/* ── Extract results ───────────────────────────────────────────── */
 
-.decision-banner {
-  background: rgba(253,203,110,0.1);
-  border: 1px solid rgba(253,203,110,0.3);
-  border-radius: var(--radius);
-  padding: 14px;
+.extract-result {
   margin-bottom: 16px;
+}
+.extract-result h3 {
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+.extract-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-.decision-banner .msg {
-  flex: 1;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
   font-size: 13px;
-  color: var(--yellow);
+}
+.extract-item input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+.extract-item .url {
+  flex: 1;
+  word-break: break-all;
+  color: var(--blue);
+}
+.extract-item .type-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: rgba(108,92,231,0.15);
+  color: var(--accent);
 }
 
-/* ── Scrollbar ──────────────────────────────────────────────────── */
+/* ── Scrollbar ─────────────────────────────────────────────────── */
 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
-/* ── Responsive tweaks ──────────────────────────────────────────── */
+/* ── Responsive ────────────────────────────────────────────────── */
 
 @media (max-width: 800px) {
-  .jobs-panel { width: 240px; min-width: 240px; }
+  .jobs-panel { width: 280px; min-width: 280px; }
   .detail-grid { grid-template-columns: 1fr; }
-}
-
-/* ── Preview image ──────────────────────────────────────────────── */
-
-.preview-img {
-  max-width: 100%;
-  max-height: 200px;
-  object-fit: contain;
-  border-radius: 6px;
-  background: repeating-conic-gradient(#333 0% 25%, #444 0% 50%) 50% / 16px 16px;
+  .download-bar { flex-wrap: wrap; }
+  .download-bar input { min-width: 200px; }
 }

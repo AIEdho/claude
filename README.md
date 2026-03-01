@@ -1,284 +1,104 @@
-# Image Factory
+# Skool Video Downloader
 
-**Local desktop app that automates print-on-demand image prep.**
+**Download videos from Skool courses for offline viewing.**
 
-No cloud, no accounts, no external services. Everything runs on your computer.
+A local web app that lets you save Skool lesson videos as MP4 files. Runs entirely on your computer - no third-party services needed.
 
----
+## Features
 
-## Quick Start (3 steps)
+- **Single Video Download** – Paste a Skool lesson URL and download the video
+- **Direct URL Support** – Also works with direct Vimeo, YouTube, and other video URLs
+- **Video Extraction** – Preview what videos are on a page before downloading
+- **Quality Selection** – Choose between best, 1080p, 720p, or 480p
+- **Download Progress** – Real-time progress tracking in the web UI
+- **Job History** – Track all your downloads with status and file info
+- **Dark Mode UI** – Clean, modern interface
 
-### Step 1: Install
+## Prerequisites
+
+- Python 3.10+
+- A Skool account with access to the courses you want to download
+- FFmpeg (recommended, for video merging) – [Install FFmpeg](https://ffmpeg.org/download.html)
+
+## Quick Start
+
+### 1. Setup
 
 **macOS / Linux:**
 ```bash
-cd image-factory
+chmod +x setup.sh
 ./setup.sh
 ```
 
 **Windows:**
 ```
-Double-click setup.bat
+setup.bat
 ```
 
-This creates a virtual environment and installs all dependencies. Only needed once.
+### 2. Run
 
-### Step 2: Run
-
-**macOS / Linux:**
 ```bash
-source venv/bin/activate
+source venv/bin/activate   # Windows: venv\Scripts\activate.bat
 python run.py
 ```
 
-**Windows:**
-```
-venv\Scripts\activate.bat
-python run.py
-```
+The app opens at [http://localhost:5555](http://localhost:5555).
 
-### Step 3: Use
+### 3. Configure
 
-Your browser opens automatically at **http://localhost:5555**
+1. Click **Settings** in the top-right
+2. Paste your Skool session cookie (see below)
+3. Set your download folder and preferred video quality
+4. Click **Save Settings**
 
-That's it! You're running.
+### 4. Download
 
----
+1. Copy a lesson URL from Skool (e.g., `https://www.skool.com/your-community/classroom/...`)
+2. Paste it in the URL bar
+3. Click **Download**
 
-## How to Use
+## Getting Your Skool Cookie
 
-### Import an Image
-1. Click **"+ Import Image"** in the top bar
-2. Select a PNG or JPG file
-3. The job appears in the left panel
+1. Log into [Skool](https://www.skool.com) in your browser
+2. Open DevTools (F12 or right-click → Inspect)
+3. Go to the **Network** tab
+4. Reload the page
+5. Click any request to `skool.com`
+6. Find the **Cookie** header in the Request Headers
+7. Copy the entire cookie value
+8. Paste it in the app's Settings
 
-### Or: Drop Files into INBOX
-1. Open your INBOX folder (default: `~/Desktop/ImageFactory/INBOX/`)
-2. Turn on **"Auto Watch"** toggle in the top bar
-3. Drop PNG/JPG files into that folder — they get processed automatically
-
-### Job Lifecycle
-Each image goes through these steps:
-1. **Detect** – identifies file type and checks for transparency
-2. **Background Removal** – removes background (if enabled)
-3. **Edge Cleanup** – softens cutout edges, removes halos
-4. **Upscale** – enlarges to target print size
-5. **Resize** – fits to your chosen preset dimensions
-6. **Export** – saves print-ready PNG (and optional JPG preview)
-
-### View a Job
-Click any job in the left panel to see:
-- Processing steps checklist with live status
-- Settings used for that job
-- Output files
-- Error messages (if any)
-
-### Re-run or Duplicate
-- **Re-run**: Processes the same image with the same settings
-- **Duplicate**: Processes the same image with different settings (e.g., different preset)
-
----
-
-## Settings
-
-Click **"Settings"** in the top bar to configure:
-
-### Folders
-| Setting | Default | Description |
-|---------|---------|-------------|
-| INBOX | `~/Desktop/ImageFactory/INBOX/` | Where to watch for new files |
-| OUTPUT | `~/Desktop/ImageFactory/OUTPUT/` | Where processed images go |
-| ARCHIVE | `~/Desktop/ImageFactory/ARCHIVE/` | Where originals get moved after success |
-| LOGS | `~/Desktop/ImageFactory/LOGS/` | App logs and per-job logs |
-
-### Processing
-| Setting | Options | Default |
-|---------|---------|---------|
-| Background Removal | Auto / Ask each time / Never | Ask each time |
-| Upscale Quality | Fast / Best | Fast |
-| Fit Mode | Pad to fit / Crop to fill | Pad |
-
-### Output Presets
-Built-in presets:
-- **Portrait 2:3** — 4500×5400 pixels
-- **Square 1:1** — 5000×5000 pixels
-
-Add custom presets via the API (see below).
-
-### Naming
-Default template: `{date}_{original}_{preset}_v{version}`
-
-Files are **never overwritten** — the version number auto-increments.
-
-### Folder Watcher (Dropbox-friendly)
-- **Stability Wait**: Waits 4 seconds for file to stop changing before processing
-- **Trigger Mode**: Only processes files ending with `_READY.png` or `_READY.jpg`
-- Automatically ignores hidden files (`.file`), temp files (`.tmp`), and Dropbox conflicts
-
----
-
-## Using with Dropbox
-
-1. Open **Settings** → set your INBOX path to a Dropbox folder
-2. Enable **Trigger Mode** (optional) — only processes files you mark as `_READY`
-3. Turn on **Auto Watch**
-4. Files synced via Dropbox will be detected and processed automatically
-5. The stability check prevents processing half-synced files
-
----
-
-## Local API (for OpenClaw)
-
-The app exposes a REST API on `localhost:5555` for automation.
-
-### Endpoints
-
-#### Health Check
-```bash
-curl http://localhost:5555/health
-```
-```json
-{"status": "ok", "app": "Image Factory", "version": "1.0.0", "watcher_running": false}
-```
-
-#### Process an Image
-```bash
-curl -X POST http://localhost:5555/process \
-  -H "Content-Type: application/json" \
-  -d '{
-    "file_path": "/path/to/image.png",
-    "preset": "4500x5400_portrait",
-    "background_mode": "auto",
-    "upscale_quality": "best",
-    "export_jpg": true
-  }'
-```
-```json
-{"job_id": "20250209143022_a1b2c3d4", "status": "queued"}
-```
-
-#### List All Jobs
-```bash
-curl http://localhost:5555/jobs
-```
-
-#### Get Job Status
-```bash
-curl http://localhost:5555/jobs/20250209143022_a1b2c3d4
-```
-
-#### Re-run a Job
-```bash
-curl -X POST http://localhost:5555/jobs/20250209143022_a1b2c3d4/rerun
-```
-
-#### Duplicate with Different Settings
-```bash
-curl -X POST http://localhost:5555/jobs/20250209143022_a1b2c3d4/duplicate \
-  -H "Content-Type: application/json" \
-  -d '{"preset": "5000x5000_square"}'
-```
-
-#### Upload a File
-```bash
-curl -X POST http://localhost:5555/import \
-  -F "file=@/path/to/image.png"
-```
-
-#### Control Folder Watcher
-```bash
-curl -X POST http://localhost:5555/watcher/start
-curl -X POST http://localhost:5555/watcher/stop
-curl http://localhost:5555/watcher/status
-```
-
-#### Get/Update Settings
-```bash
-curl http://localhost:5555/settings
-
-curl -X PATCH http://localhost:5555/settings \
-  -H "Content-Type: application/json" \
-  -d '{"background_removal": "auto", "upscale_quality": "best"}'
-```
-
-#### Manage Presets
-```bash
-# List presets
-curl http://localhost:5555/presets
-
-# Add a custom preset
-curl -X POST http://localhost:5555/presets \
-  -H "Content-Type: application/json" \
-  -d '{"key": "custom_3000x3000", "label": "Custom 3000x3000", "width": 3000, "height": 3000}'
-
-# Delete a preset
-curl -X DELETE http://localhost:5555/presets/custom_3000x3000
-```
-
----
-
-## Where to Edit Things
-
-| What | File | Notes |
-|------|------|-------|
-| Default settings | `app/config.py` | `DEFAULTS` dict at the top |
-| Built-in presets | `app/config.py` | `DEFAULT_PRESETS` dict |
-| Image processing logic | `app/processor.py` | The pipeline steps |
-| Edge cleanup algorithm | `app/processor.py` | `_edge_cleanup()` function |
-| Upscale logic | `app/processor.py` | `_upscale()` function |
-| Folder watcher rules | `app/watcher.py` | `_should_ignore()` and `_is_stable()` |
-| UI layout | `app/static/index.html` | HTML structure |
-| UI styling | `app/static/style.css` | Colors, layout, spacing |
-| UI behavior | `app/static/app.js` | Button actions, API calls |
-| API routes | `app/main.py` | All endpoint definitions |
-| Runtime settings | `settings.json` | Auto-generated, safe to edit |
-
----
-
-## Folder Structure (auto-created)
+## Project Structure
 
 ```
-~/Desktop/ImageFactory/
-├── INBOX/                    ← Drop images here
-├── OUTPUT/
-│   ├── 4500x5400_portrait/   ← Processed images by preset
-│   └── 5000x5000_square/
-├── ARCHIVE/
-│   └── 2025-02-09/           ← Originals moved here after success
-└── LOGS/
-    ├── app.log               ← Application log
-    └── jobs/
-        └── {job_id}.json     ← Per-job detailed log
+├── run.py              # App launcher
+├── selfcheck.py        # Dependency checker
+├── requirements.txt    # Python dependencies
+├── setup.sh / .bat     # Setup scripts
+└── app/
+    ├── main.py         # FastAPI application & API routes
+    ├── config.py       # Settings management
+    ├── jobs.py         # Download job tracking
+    ├── downloader.py   # Video extraction & download logic
+    └── static/         # Web UI (HTML, CSS, JS)
 ```
 
----
+## API Endpoints
 
-## Troubleshooting
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Web UI |
+| GET | `/health` | Health check |
+| GET | `/settings` | Get current settings |
+| PATCH | `/settings` | Update settings |
+| GET | `/jobs` | List all download jobs |
+| GET | `/jobs/{id}` | Get job details |
+| DELETE | `/jobs/{id}` | Delete a job |
+| POST | `/download` | Start a download |
+| POST | `/download/batch` | Start multiple downloads |
+| POST | `/extract` | Extract video info from a URL |
+| POST | `/extract/course` | Extract all lesson links from a course |
 
-**"rembg not available"**: Background removal requires the `rembg` package. The first time you use it, it downloads a ~170MB AI model. After that, it works fully offline. If install fails, set background removal to "Never" and the app works fine without it.
+## Disclaimer
 
-**Port already in use**: Run with a different port: `python run.py --port 6666`
-
-**Job failed**: Click the job to see the error message. Common causes:
-- File was deleted before processing started
-- Corrupt image file
-- Disk full
-
-**Files not being detected by watcher**: Make sure:
-- Auto Watch is enabled (toggle in top bar)
-- Files are PNG or JPG
-- Files don't start with `.` or end with `.tmp`
-- If trigger mode is on, files must end with `_READY.png` or `_READY.jpg`
-
----
-
-## Tech Stack
-
-- **Backend**: Python 3.10+ with FastAPI
-- **UI**: HTML/CSS/JS served locally (no build step, no Node.js needed)
-- **Image Processing**: Pillow (resize, upscale, crop, pad)
-- **Background Removal**: rembg with U2Net (fully offline after first model download)
-- **Folder Watching**: watchdog library
-- **Server**: uvicorn
-
-Everything runs locally. No data leaves your computer.
+This tool is intended for personal, offline use by users who have legitimate access to Skool courses. It does not encourage piracy or redistribution of copyrighted material. Please respect content creators and the terms of service of the platforms you use.

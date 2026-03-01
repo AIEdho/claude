@@ -3,142 +3,111 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Image Factory</title>
+  <title>Skool Video Downloader</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <div id="app">
 
-  <!-- ── Top Bar ──────────────────────────────────────────────── -->
+  <!-- Top Bar -->
   <div class="top-bar">
-    <h1>Image Factory</h1>
-
-    <label id="importBtn" class="btn btn-primary" title="Import an image file">
-      <input type="file" accept=".png,.jpg,.jpeg" style="display:none" id="fileInput">
-      + Import Image
-    </label>
-
-    <button class="btn btn-secondary" onclick="App.openFolder('inbox')">Open INBOX</button>
-    <button class="btn btn-secondary" onclick="App.openFolder('output')">Open OUTPUT</button>
-
-    <div class="toggle-wrap">
-      <label class="toggle">
-        <input type="checkbox" id="watcherToggle" onchange="App.toggleWatcher(this.checked)">
-        <span class="slider"></span>
-      </label>
-      <span>Auto Watch</span>
-    </div>
-
+    <h1>Skool Video Downloader</h1>
+    <div class="auth-status" id="authStatus"></div>
     <button class="btn btn-secondary" onclick="App.openSettings()">Settings</button>
   </div>
 
-  <!-- ── Main Area ────────────────────────────────────────────── -->
+  <!-- Download Bar -->
+  <div class="download-bar">
+    <input type="text" id="urlInput" placeholder="Paste a Skool lesson URL or direct video URL..." autocomplete="off">
+    <button class="btn btn-primary" id="downloadBtn" onclick="App.startDownload()">Download</button>
+    <button class="btn btn-secondary" id="extractBtn" onclick="App.extractInfo()" title="Preview video info without downloading">Extract Info</button>
+  </div>
+
+  <!-- Main Area -->
   <div class="main-area">
 
-    <!-- Left: Jobs list -->
+    <!-- Left: Downloads list -->
     <div class="jobs-panel">
-      <div class="panel-header">Jobs</div>
+      <div class="panel-header">
+        <span>Downloads</span>
+        <button class="btn btn-sm btn-secondary" onclick="App.clearCompleted()" title="Remove completed downloads">Clear Done</button>
+      </div>
       <div class="jobs-list" id="jobsList">
-        <div class="jobs-empty" id="jobsEmpty">No jobs yet. Import an image to get started.</div>
+        <div class="jobs-empty" id="jobsEmpty">No downloads yet. Paste a URL above to get started.</div>
       </div>
     </div>
 
-    <!-- Right: Detail panel -->
+    <!-- Right: Detail / Extract panel -->
     <div class="detail-panel" id="detailPanel">
-      <div class="detail-empty" id="detailEmpty">Select a job to view details</div>
+      <div class="detail-empty" id="detailEmpty">
+        <div class="welcome-box">
+          <h2>How to use</h2>
+          <ol>
+            <li>Open <strong>Settings</strong> and paste your Skool session cookie</li>
+            <li>Copy a lesson URL from Skool</li>
+            <li>Paste it above and click <strong>Download</strong></li>
+          </ol>
+          <p class="dim">You can also paste direct video URLs (Vimeo, YouTube, etc.)</p>
+        </div>
+      </div>
       <div id="detailContent" style="display:none"></div>
     </div>
   </div>
 </div>
 
-<!-- ── Settings Modal ─────────────────────────────────────────── -->
+<!-- Settings Modal -->
 <div class="modal-overlay" id="settingsModal">
   <div class="modal">
     <h2>Settings</h2>
 
     <div class="modal-section">
-      <h3>Folders</h3>
+      <h3>Authentication</h3>
       <div class="form-row">
-        <label>INBOX Path</label>
-        <input type="text" id="s_inbox_path">
+        <label>Skool Cookie</label>
+        <textarea id="s_cookie" rows="3" placeholder="Paste your Skool session cookie here..."></textarea>
       </div>
-      <div class="form-row">
-        <label>OUTPUT Path</label>
-        <input type="text" id="s_output_path">
-      </div>
-      <div class="form-row">
-        <label>ARCHIVE Path</label>
-        <input type="text" id="s_archive_path">
-      </div>
-      <div class="form-row">
-        <label>LOGS Path</label>
-        <input type="text" id="s_logs_path">
-      </div>
+      <p class="help-text">
+        To get your cookie: Log into Skool in your browser, open DevTools (F12),
+        go to Network tab, reload the page, click any request, and copy the Cookie header value.
+      </p>
     </div>
 
     <div class="modal-section">
-      <h3>Processing</h3>
+      <h3>Download</h3>
       <div class="form-row">
-        <label>Background Removal</label>
-        <select id="s_background_removal">
-          <option value="auto">Auto (always remove)</option>
-          <option value="ask">Ask each time</option>
-          <option value="never">Never</option>
+        <label>Save Location</label>
+        <input type="text" id="s_download_path">
+      </div>
+      <div class="form-row">
+        <label>Video Quality</label>
+        <select id="s_video_quality">
+          <option value="best">Best Available</option>
+          <option value="1080">1080p</option>
+          <option value="720">720p</option>
+          <option value="480">480p</option>
         </select>
       </div>
       <div class="form-row">
-        <label>Upscale Quality</label>
-        <select id="s_upscale_quality">
-          <option value="fast">Fast (LANCZOS)</option>
-          <option value="best">Best (LANCZOS + Sharpen)</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label>Fit Mode</label>
-        <select id="s_fit_mode">
-          <option value="pad">Pad to fit</option>
-          <option value="crop">Crop to fill</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="modal-section">
-      <h3>Output</h3>
-      <div class="form-row">
-        <label>Default Preset</label>
-        <select id="s_selected_preset"></select>
-      </div>
-      <div class="form-row">
-        <label>Export JPG Preview</label>
-        <select id="s_export_jpg_preview">
-          <option value="false">No</option>
-          <option value="true">Yes</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label>Naming Template</label>
-        <input type="text" id="s_naming_template">
-      </div>
-    </div>
-
-    <div class="modal-section">
-      <h3>Folder Watcher</h3>
-      <div class="form-row">
-        <label>Stability Wait (sec)</label>
-        <input type="number" id="s_watcher_stability_seconds" min="1" max="30">
-      </div>
-      <div class="form-row">
-        <label>Trigger Mode Only</label>
-        <select id="s_watcher_trigger_mode">
-          <option value="false">Off (process all files)</option>
-          <option value="true">On (only *_READY files)</option>
-        </select>
+        <label>Filename Template</label>
+        <input type="text" id="s_filename_template" placeholder="{title}">
       </div>
     </div>
 
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="App.closeSettings()">Cancel</button>
       <button class="btn btn-primary" onclick="App.saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Extract Info Modal -->
+<div class="modal-overlay" id="extractModal">
+  <div class="modal modal-wide">
+    <h2>Extracted Video Info</h2>
+    <div id="extractContent"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="App.closeExtract()">Close</button>
+      <button class="btn btn-primary" id="extractDownloadBtn" onclick="App.downloadExtracted()">Download Selected</button>
     </div>
   </div>
 </div>

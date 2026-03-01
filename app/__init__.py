@@ -1,2 +1,2 @@
-# Image Factory - Local Print-on-Demand Image Prep
+# Skool Video Downloader
 __version__ = "1.0.0"

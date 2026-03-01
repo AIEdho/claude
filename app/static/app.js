@@ -1,22 +1,26 @@
-/* ── Image Factory – Frontend ─────────────────────────────────────── */
+/* ── Skool Video Downloader – Frontend ────────────────────────────── */
 
 const App = {
   jobs: [],
   selectedJobId: null,
   settings: {},
   pollTimer: null,
+  extractedVideos: [],
 
-  // ── Init ─────────────────────────────────────────────────────────
+  // ── Init ───────────────────────────────────────────────────────
   async init() {
     await this.loadSettings();
     await this.loadJobs();
     this.startPolling();
-    this.setupFileInput();
-    // Update watcher toggle
-    document.getElementById('watcherToggle').checked = this.settings.watcher_enabled || false;
+    this.updateAuthStatus();
+
+    // Enter key on URL input
+    document.getElementById('urlInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this.startDownload();
+    });
   },
 
-  // ── API helpers ──────────────────────────────────────────────────
+  // ── API helpers ────────────────────────────────────────────────
   async api(url, opts = {}) {
     try {
       const res = await fetch(url, {
@@ -34,7 +38,20 @@ const App = {
     }
   },
 
-  // ── Jobs ─────────────────────────────────────────────────────────
+  // ── Auth status ────────────────────────────────────────────────
+  updateAuthStatus() {
+    const el = document.getElementById('authStatus');
+    const cookie = this.settings.cookie_display || '';
+    if (cookie) {
+      el.className = 'auth-status connected';
+      el.textContent = 'Cookie set';
+    } else {
+      el.className = 'auth-status disconnected';
+      el.textContent = 'No cookie';
+    }
+  },
+
+  // ── Jobs ───────────────────────────────────────────────────────
   async loadJobs() {
     try {
       this.jobs = await this.api('/jobs');
@@ -47,7 +64,7 @@ const App = {
 
   startPolling() {
     if (this.pollTimer) clearInterval(this.pollTimer);
-    this.pollTimer = setInterval(() => this.loadJobs(), 2000);
+    this.pollTimer = setInterval(() => this.loadJobs(), 1500);
   },
 
   renderJobsList() {
@@ -61,28 +78,43 @@ const App = {
     }
     empty.style.display = 'none';
 
-    // Build HTML
     let html = '';
     for (const job of this.jobs) {
       const active = job.id === this.selectedJobId ? ' active' : '';
       const badge = this.badgeHTML(job.status);
-      const name = job.original_filename || job.id;
+      const name = job.title || job.id;
       const time = this.formatTime(job.created_at);
-      const needsAction = job.needs_bg_decision ? ' &middot; <span style="color:var(--yellow)">Needs decision</span>' : '';
+      const progress = job.progress || 0;
+      const progressClass = job.status === 'done' ? ' done' : job.status === 'failed' ? ' failed' : '';
+      const showProgress = ['downloading', 'done', 'failed'].includes(job.status);
+
       html += `
         <div class="job-card${active}" data-id="${job.id}" onclick="App.selectJob('${job.id}')">
           <div class="job-name">${this.esc(name)}</div>
-          <div class="job-meta">${badge} <span>${time}</span>${needsAction}</div>
+          <div class="job-meta">
+            ${badge}
+            <span>${time}</span>
+            ${job.file_size ? `<span>${this.esc(job.file_size)}</span>` : ''}
+          </div>
+          ${showProgress ? `
+          <div class="progress-bar-wrap">
+            <div class="progress-bar${progressClass}" style="width:${progress}%"></div>
+          </div>` : ''}
         </div>`;
     }
-    // Preserve scroll position
     const scrollTop = list.scrollTop;
     list.innerHTML = html;
     list.scrollTop = scrollTop;
   },
 
   badgeHTML(status) {
-    const labels = { queued: 'Queued', processing: 'Processing', done: 'Done', failed: 'Failed' };
+    const labels = {
+      queued: 'Queued',
+      extracting: 'Extracting',
+      downloading: 'Downloading',
+      done: 'Done',
+      failed: 'Failed',
+    };
     return `<span class="badge ${status}">${labels[status] || status}</span>`;
   },
 
@@ -98,7 +130,7 @@ const App = {
     return d.innerHTML;
   },
 
-  // ── Select job ───────────────────────────────────────────────────
+  // ── Select job ─────────────────────────────────────────────────
   selectJob(id) {
     this.selectedJobId = id;
     this.renderJobsList();
@@ -119,191 +151,198 @@ const App = {
     empty.style.display = 'none';
 
     const statusBadge = this.badgeHTML(job.status);
+    const progress = job.progress || 0;
+    const progressClass = job.status === 'done' ? ' done' : job.status === 'failed' ? ' failed' : '';
 
-    // Decision banner
-    let decisionBanner = '';
-    if (job.needs_bg_decision && job.status === 'queued') {
-      decisionBanner = `
-        <div class="decision-banner">
-          <div class="msg">This image needs a background removal decision before processing.</div>
-          <button class="btn btn-success btn-sm" onclick="App.decideBg('${job.id}', true)">Remove Background</button>
-          <button class="btn btn-secondary btn-sm" onclick="App.decideBg('${job.id}', false)">Skip / Keep</button>
+    let errorBox = '';
+    if (job.error) {
+      errorBox = `<div class="error-box">${this.esc(job.error)}</div>`;
+    }
+
+    let successBox = '';
+    if (job.status === 'done' && job.output_path) {
+      successBox = `
+        <div class="success-box">
+          Download complete! Saved to:<br>
+          <strong>${this.esc(job.output_path)}</strong>
         </div>`;
     }
 
-    // Error box
-    let errorBox = '';
-    if (job.error) {
-      errorBox = `<div class="error-box">Error: ${this.esc(job.error)}</div>`;
-    }
-
-    // Steps
-    const stepNames = {
-      detect: 'Detect File Type',
-      background_removal: 'Background Removal',
-      edge_cleanup: 'Edge Cleanup',
-      upscale: 'Upscale',
-      resize: 'Resize to Preset',
-      export: 'Export',
-    };
-    let stepsHTML = '';
-    for (const [key, label] of Object.entries(stepNames)) {
-      const st = job.steps[key] || 'pending';
-      const icons = {
-        pending: '&middot;',
-        running: '&#9654;',
-        done: '&#10003;',
-        skipped: '&#8211;',
-        failed: '&#10007;',
-      };
-      stepsHTML += `<li><span class="step-icon ${st}">${icons[st]}</span> ${label}</li>`;
-    }
-
-    // Settings used
-    const preset = this.settings.presets?.[job.preset];
-    const presetLabel = preset ? preset.label : job.preset;
-
-    // Outputs
-    let outputsHTML = '<div style="color:var(--text-dim);font-size:13px">No outputs yet</div>';
-    if (job.output_files && job.output_files.length > 0) {
-      outputsHTML = job.output_files.map(f => {
-        const name = f.split('/').pop().split('\\').pop();
-        return `<div class="output-item"><span style="color:var(--green)">&#10003;</span> ${this.esc(name)}</div>`;
-      }).join('');
+    let progressBar = '';
+    if (['extracting', 'downloading'].includes(job.status)) {
+      progressBar = `
+        <div class="big-progress">
+          <div class="big-progress-bar-wrap">
+            <div class="big-progress-bar${progressClass}" style="width:${progress}%"></div>
+          </div>
+          <div class="big-progress-text">${this.esc(job.progress_text || 'Working...')}</div>
+        </div>`;
+    } else if (job.status === 'done') {
+      progressBar = `
+        <div class="big-progress">
+          <div class="big-progress-bar-wrap">
+            <div class="big-progress-bar done" style="width:100%"></div>
+          </div>
+          <div class="big-progress-text">Complete</div>
+        </div>`;
+    } else if (job.status === 'failed') {
+      progressBar = `
+        <div class="big-progress">
+          <div class="big-progress-bar-wrap">
+            <div class="big-progress-bar failed" style="width:100%"></div>
+          </div>
+          <div class="big-progress-text">Failed</div>
+        </div>`;
     }
 
     content.innerHTML = `
       <div class="detail-header">
-        <h2>${this.esc(job.original_filename)}</h2>
+        <h2>${this.esc(job.title || 'Untitled')}</h2>
         ${statusBadge}
-        <div class="detail-actions">
-          <button class="btn btn-secondary btn-sm" onclick="App.rerunJob('${job.id}')">Re-run</button>
-          <button class="btn btn-secondary btn-sm" onclick="App.duplicateJob('${job.id}')">Duplicate</button>
+        <div style="margin-left:auto">
+          <button class="btn btn-danger btn-sm" onclick="App.deleteJob('${job.id}')">Delete</button>
         </div>
       </div>
 
-      ${decisionBanner}
       ${errorBox}
+      ${successBox}
+      ${progressBar}
 
       <div class="detail-grid">
         <div class="detail-card">
-          <h3>Processing Steps</h3>
-          <ul class="step-list">${stepsHTML}</ul>
-        </div>
-
-        <div class="detail-card">
-          <h3>Job Settings</h3>
-          <div class="info-row"><span class="label">Preset:</span><span class="value">${this.esc(presetLabel)}</span></div>
-          <div class="info-row"><span class="label">BG Mode:</span><span class="value">${this.esc(job.background_mode)}</span></div>
-          <div class="info-row"><span class="label">Upscale:</span><span class="value">${this.esc(job.upscale_quality)}</span></div>
-          <div class="info-row"><span class="label">Fit:</span><span class="value">${this.esc(job.fit_mode)}</span></div>
-          <div class="info-row"><span class="label">JPG:</span><span class="value">${job.export_jpg ? 'Yes' : 'No'}</span></div>
-          <div class="info-row"><span class="label">Transparent:</span><span class="value">${job.has_transparency === null ? 'Pending' : job.has_transparency ? 'Yes' : 'No'}</span></div>
-        </div>
-
-        <div class="detail-card">
-          <h3>Outputs</h3>
-          ${outputsHTML}
-        </div>
-
-        <div class="detail-card">
-          <h3>Info</h3>
-          <div class="info-row"><span class="label">Job ID:</span><span class="value" style="font-size:11px">${this.esc(job.id)}</span></div>
-          <div class="info-row"><span class="label">Input:</span><span class="value" style="font-size:11px">${this.esc(job.input_path)}</span></div>
+          <h3>Download Info</h3>
+          <div class="info-row"><span class="label">Status:</span><span class="value">${this.esc(job.status)}</span></div>
+          <div class="info-row"><span class="label">Quality:</span><span class="value">${this.esc(this.settings.video_quality || 'best')}</span></div>
+          ${job.file_size ? `<div class="info-row"><span class="label">File Size:</span><span class="value">${this.esc(job.file_size)}</span></div>` : ''}
           <div class="info-row"><span class="label">Created:</span><span class="value">${job.created_at ? new Date(job.created_at).toLocaleString() : '-'}</span></div>
-          <div class="info-row"><span class="label">Finished:</span><span class="value">${job.finished_at ? new Date(job.finished_at).toLocaleString() : '-'}</span></div>
+          ${job.finished_at ? `<div class="info-row"><span class="label">Finished:</span><span class="value">${new Date(job.finished_at).toLocaleString()}</span></div>` : ''}
         </div>
+
+        <div class="detail-card">
+          <h3>URLs</h3>
+          <div class="info-row"><span class="label">Page:</span><span class="value" style="font-size:11px">${this.esc(job.url)}</span></div>
+          ${job.video_url ? `<div class="info-row"><span class="label">Video:</span><span class="value" style="font-size:11px">${this.esc(job.video_url)}</span></div>` : ''}
+        </div>
+
+        ${job.output_path ? `
+        <div class="detail-card full-width">
+          <h3>Output</h3>
+          <div class="info-row"><span class="label">Saved to:</span><span class="value" style="font-size:11px">${this.esc(job.output_path)}</span></div>
+        </div>` : ''}
       </div>`;
   },
 
-  // ── Actions ──────────────────────────────────────────────────────
-  async decideBg(jobId, remove) {
-    try {
-      await this.api(`/jobs/${jobId}/decide-bg?remove=${remove}`, { method: 'POST' });
-      await this.loadJobs();
-    } catch (e) {
-      alert('Error: ' + e.message);
-    }
-  },
+  // ── Actions ────────────────────────────────────────────────────
+  async startDownload() {
+    const input = document.getElementById('urlInput');
+    const url = input.value.trim();
+    if (!url) return;
 
-  async rerunJob(jobId) {
     try {
-      const res = await this.api(`/jobs/${jobId}/rerun`, { method: 'POST' });
-      this.selectedJobId = res.job_id;
-      await this.loadJobs();
-    } catch (e) {
-      alert('Error: ' + e.message);
-    }
-  },
-
-  async duplicateJob(jobId) {
-    const presetKey = prompt('Enter preset key (leave blank for same):', '');
-    try {
-      const body = {};
-      if (presetKey) body.preset = presetKey;
-      const res = await this.api(`/jobs/${jobId}/duplicate`, {
+      const res = await this.api('/download', {
         method: 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify({ url }),
       });
       this.selectedJobId = res.job_id;
+      input.value = '';
       await this.loadJobs();
     } catch (e) {
       alert('Error: ' + e.message);
     }
   },
 
-  // ── File import ──────────────────────────────────────────────────
-  setupFileInput() {
-    const input = document.getElementById('fileInput');
-    input.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+  async extractInfo() {
+    const input = document.getElementById('urlInput');
+    const url = input.value.trim();
+    if (!url) return;
 
-      const formData = new FormData();
-      formData.append('file', file);
+    document.getElementById('extractContent').innerHTML = '<p style="color:var(--text-dim)">Extracting...</p>';
+    document.getElementById('extractModal').classList.add('open');
 
-      try {
-        const res = await fetch('/import', { method: 'POST', body: formData });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || 'Upload failed');
-        }
-        const data = await res.json();
-        this.selectedJobId = data.job_id;
-        await this.loadJobs();
-      } catch (e) {
-        alert('Import error: ' + e.message);
-      }
-      input.value = '';
-    });
-  },
-
-  // ── Folder links ─────────────────────────────────────────────────
-  openFolder(which) {
-    // Show the path to the user (can't open OS folders from browser)
-    const paths = {
-      inbox: this.settings.inbox_path,
-      output: this.settings.output_path,
-    };
-    const p = paths[which] || '';
-    alert(`${which.toUpperCase()} folder path:\n\n${p}\n\nOpen this path in your file explorer.`);
-  },
-
-  // ── Watcher toggle ──────────────────────────────────────────────
-  async toggleWatcher(enabled) {
     try {
-      if (enabled) {
-        await this.api('/watcher/start', { method: 'POST' });
+      const res = await this.api('/extract', {
+        method: 'POST',
+        body: JSON.stringify({ url }),
+      });
+
+      this.extractedVideos = res.videos || [];
+
+      let html = `<div class="extract-result">
+        <h3>${this.esc(res.title || 'Unknown')}</h3>
+        <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">${this.esc(url)}</p>`;
+
+      if (this.extractedVideos.length === 0) {
+        html += '<p style="color:var(--yellow)">No videos found on this page. Make sure you have a valid cookie set.</p>';
       } else {
-        await this.api('/watcher/stop', { method: 'POST' });
+        for (let i = 0; i < this.extractedVideos.length; i++) {
+          const v = this.extractedVideos[i];
+          html += `
+            <div class="extract-item">
+              <input type="checkbox" id="ev_${i}" checked>
+              <span class="type-badge">${this.esc(v.type)}</span>
+              <span class="url">${this.esc(v.url)}</span>
+            </div>`;
+        }
       }
+      html += '</div>';
+      document.getElementById('extractContent').innerHTML = html;
+      document.getElementById('extractDownloadBtn').style.display = this.extractedVideos.length ? '' : 'none';
     } catch (e) {
-      alert('Error toggling watcher: ' + e.message);
-      document.getElementById('watcherToggle').checked = !enabled;
+      document.getElementById('extractContent').innerHTML = `<div class="error-box">${this.esc(e.message)}</div>`;
     }
   },
 
-  // ── Settings ─────────────────────────────────────────────────────
+  async downloadExtracted() {
+    const urls = [];
+    for (let i = 0; i < this.extractedVideos.length; i++) {
+      const cb = document.getElementById(`ev_${i}`);
+      if (cb && cb.checked) {
+        urls.push({ url: this.extractedVideos[i].url });
+      }
+    }
+    if (urls.length === 0) return;
+
+    try {
+      await this.api('/download/batch', {
+        method: 'POST',
+        body: JSON.stringify({ urls }),
+      });
+      this.closeExtract();
+      document.getElementById('urlInput').value = '';
+      await this.loadJobs();
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+  },
+
+  closeExtract() {
+    document.getElementById('extractModal').classList.remove('open');
+  },
+
+  async deleteJob(jobId) {
+    try {
+      await this.api(`/jobs/${jobId}`, { method: 'DELETE' });
+      if (this.selectedJobId === jobId) this.selectedJobId = null;
+      await this.loadJobs();
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+  },
+
+  async clearCompleted() {
+    const done = this.jobs.filter(j => j.status === 'done' || j.status === 'failed');
+    for (const j of done) {
+      try {
+        await this.api(`/jobs/${j.id}`, { method: 'DELETE' });
+      } catch (e) { /* ignore */ }
+    }
+    if (done.find(j => j.id === this.selectedJobId)) {
+      this.selectedJobId = null;
+    }
+    await this.loadJobs();
+  },
+
+  // ── Settings ───────────────────────────────────────────────────
   async loadSettings() {
     try {
       this.settings = await this.api('/settings');
@@ -314,31 +353,10 @@ const App = {
 
   openSettings() {
     const s = this.settings;
-    document.getElementById('s_inbox_path').value = s.inbox_path || '';
-    document.getElementById('s_output_path').value = s.output_path || '';
-    document.getElementById('s_archive_path').value = s.archive_path || '';
-    document.getElementById('s_logs_path').value = s.logs_path || '';
-    document.getElementById('s_background_removal').value = s.background_removal || 'ask';
-    document.getElementById('s_upscale_quality').value = s.upscale_quality || 'fast';
-    document.getElementById('s_fit_mode').value = s.fit_mode || 'pad';
-    document.getElementById('s_export_jpg_preview').value = String(s.export_jpg_preview || false);
-    document.getElementById('s_naming_template').value = s.naming_template || '';
-    document.getElementById('s_watcher_stability_seconds').value = s.watcher_stability_seconds || 4;
-    document.getElementById('s_watcher_trigger_mode').value = String(s.watcher_trigger_mode || false);
-
-    // Populate presets dropdown
-    const presetSelect = document.getElementById('s_selected_preset');
-    presetSelect.innerHTML = '';
-    if (s.presets) {
-      for (const [key, p] of Object.entries(s.presets)) {
-        const opt = document.createElement('option');
-        opt.value = key;
-        opt.textContent = p.label;
-        if (key === s.selected_preset) opt.selected = true;
-        presetSelect.appendChild(opt);
-      }
-    }
-
+    document.getElementById('s_cookie').value = s.cookie || '';
+    document.getElementById('s_download_path').value = s.download_path || '';
+    document.getElementById('s_video_quality').value = s.video_quality || 'best';
+    document.getElementById('s_filename_template').value = s.filename_template || '{title}';
     document.getElementById('settingsModal').classList.add('open');
   },
 
@@ -348,25 +366,23 @@ const App = {
 
   async saveSettings() {
     const patch = {
-      inbox_path: document.getElementById('s_inbox_path').value,
-      output_path: document.getElementById('s_output_path').value,
-      archive_path: document.getElementById('s_archive_path').value,
-      logs_path: document.getElementById('s_logs_path').value,
-      background_removal: document.getElementById('s_background_removal').value,
-      upscale_quality: document.getElementById('s_upscale_quality').value,
-      fit_mode: document.getElementById('s_fit_mode').value,
-      export_jpg_preview: document.getElementById('s_export_jpg_preview').value === 'true',
-      naming_template: document.getElementById('s_naming_template').value,
-      selected_preset: document.getElementById('s_selected_preset').value,
-      watcher_stability_seconds: parseInt(document.getElementById('s_watcher_stability_seconds').value) || 4,
-      watcher_trigger_mode: document.getElementById('s_watcher_trigger_mode').value === 'true',
+      download_path: document.getElementById('s_download_path').value,
+      video_quality: document.getElementById('s_video_quality').value,
+      filename_template: document.getElementById('s_filename_template').value,
     };
+
+    // Only include cookie if it was changed (not the masked version)
+    const cookieVal = document.getElementById('s_cookie').value.trim();
+    if (cookieVal) {
+      patch.cookie = cookieVal;
+    }
 
     try {
       this.settings = await this.api('/settings', {
         method: 'PATCH',
         body: JSON.stringify(patch),
       });
+      this.updateAuthStatus();
       this.closeSettings();
     } catch (e) {
       alert('Failed to save settings: ' + e.message);
