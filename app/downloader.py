@@ -4,12 +4,15 @@ Skool Video Downloader – core extraction and download logic.
 Flow:
 1. Fetch the Skool page using the user's session cookie
 2. Parse the HTML to find embedded video URLs (Vimeo, YouTube, Wistia, direct mp4)
+   - Also extracts from Skool's embedded JSON data (__NEXT_DATA__, inline JSON)
 3. Use yt-dlp to download the video
 """
 
+import json
 import logging
 import os
 import re
+import signal
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin
@@ -23,6 +26,9 @@ from app.jobs import complete_job, fail_job, update_job
 logger = logging.getLogger("skool_downloader")
 
 SKOOL_BASE = "https://www.skool.com"
+
+# Timeout for yt-dlp operations (5 minutes)
+YT_DLP_TIMEOUT = 300
 
 
 def _build_session(cookie: str) -> requests.Session:
@@ -42,11 +48,90 @@ def _build_session(cookie: str) -> requests.Session:
     return session
 
 
+def _extract_from_next_data(html: str) -> list:
+    """
+    Extract video URLs from Next.js __NEXT_DATA__ JSON embedded in the page.
+    Skool is a Next.js app, so lesson content is often in this script tag.
+    """
+    videos = []
+    match = re.search(
+        r'<script\s+id="__NEXT_DATA__"\s+type="application/json">(.*?)</script>',
+        html,
+        re.DOTALL,
+    )
+    if not match:
+        return videos
+
+    try:
+        data = json.loads(match.group(1))
+    except (json.JSONDecodeError, ValueError):
+        return videos
+
+    # Recursively search the JSON for video URLs
+    _find_videos_in_json(data, videos)
+    return videos
+
+
+def _find_videos_in_json(obj, videos: list, depth: int = 0) -> None:
+    """Recursively walk a JSON object looking for video URLs."""
+    if depth > 20:
+        return
+
+    if isinstance(obj, str):
+        # Check if this string is a video URL
+        if any(host in obj for host in [
+            "player.vimeo.com", "vimeo.com/video",
+            "youtube.com/embed", "youtube.com/watch", "youtu.be/",
+            "wistia.com", "fast.wistia.net",
+            "loom.com/share", "loom.com/embed",
+        ]):
+            url = obj
+            if url.startswith("//"):
+                url = "https:" + url
+            if url.startswith("http") and not any(v["url"] == url for v in videos):
+                videos.append({"type": "json_embed", "url": url})
+        elif obj.endswith(".mp4") or ".mp4?" in obj:
+            if obj.startswith("http") and not any(v["url"] == obj for v in videos):
+                videos.append({"type": "direct", "url": obj})
+
+    elif isinstance(obj, dict):
+        for value in obj.values():
+            _find_videos_in_json(value, videos, depth + 1)
+
+    elif isinstance(obj, list):
+        for item in obj:
+            _find_videos_in_json(item, videos, depth + 1)
+
+
+def _extract_from_inline_json(html: str) -> list:
+    """
+    Extract video URLs from inline JSON/JavaScript in the page.
+    Looks for JSON objects containing video-related keys.
+    """
+    videos = []
+
+    # Look for JSON-like structures with video URLs in script tags
+    # Pattern: {"videoUrl":"..."} or {"video_url":"..."} or {"src":"...vimeo..."}
+    for pattern in [
+        r'"(?:videoUrl|video_url|videoSrc|video_src|embedUrl|embed_url)"\s*:\s*"(https?://[^"]+)"',
+        r'"(?:url|src|source)"\s*:\s*"(https?://(?:player\.vimeo\.com|(?:www\.)?youtube\.com|youtu\.be|fast\.wistia\.net|(?:www\.)?loom\.com)[^"]+)"',
+    ]:
+        for match in re.findall(pattern, html):
+            url = match.replace("\\/", "/")  # Unescape JSON forward slashes
+            if not any(v["url"] == url for v in videos):
+                vtype = "vimeo" if "vimeo" in url else "youtube" if "youtube" in url or "youtu.be" in url else "direct"
+                videos.append({"type": vtype, "url": url})
+
+    return videos
+
+
 def extract_video_urls(html: str, page_url: str = "") -> list:
     """
     Extract video embed URLs from Skool page HTML.
 
     Looks for:
+    - Next.js __NEXT_DATA__ embedded JSON (most reliable for Skool)
+    - Inline JSON/JavaScript video references
     - Vimeo iframes / player embeds
     - YouTube iframes / embeds
     - Wistia embeds
@@ -55,6 +140,18 @@ def extract_video_urls(html: str, page_url: str = "") -> list:
     """
     soup = BeautifulSoup(html, "html.parser")
     videos = []
+
+    # 0. Try Next.js embedded JSON first (most reliable for Skool SPA pages)
+    json_videos = _extract_from_next_data(html)
+    videos.extend(json_videos)
+    if json_videos:
+        logger.info("Found %d video(s) in __NEXT_DATA__", len(json_videos))
+
+    # 0b. Try inline JSON patterns
+    inline_videos = _extract_from_inline_json(html)
+    for v in inline_videos:
+        if not any(existing["url"] == v["url"] for existing in videos):
+            videos.append(v)
 
     # 1. iframe embeds (Vimeo, YouTube, Wistia, etc.)
     for iframe in soup.find_all("iframe"):
@@ -70,9 +167,11 @@ def extract_video_urls(html: str, page_url: str = "") -> list:
             "wistia.com", "fast.wistia.net",
             "loom.com",
         ]):
-            videos.append({"type": "iframe", "url": src})
+            if not any(v["url"] == src for v in videos):
+                videos.append({"type": "iframe", "url": src})
         elif ".mp4" in src:
-            videos.append({"type": "direct", "url": src})
+            if not any(v["url"] == src for v in videos):
+                videos.append({"type": "direct", "url": src})
 
     # 2. HTML5 <video> tags
     for video in soup.find_all("video"):
@@ -82,7 +181,8 @@ def extract_video_urls(html: str, page_url: str = "") -> list:
                 src = "https:" + src
             elif src.startswith("/"):
                 src = urljoin(page_url or SKOOL_BASE, src)
-            videos.append({"type": "direct", "url": src})
+            if not any(v["url"] == src for v in videos):
+                videos.append({"type": "direct", "url": src})
         for source in video.find_all("source"):
             s = source.get("src") or ""
             if s:
@@ -90,7 +190,8 @@ def extract_video_urls(html: str, page_url: str = "") -> list:
                     s = "https:" + s
                 elif s.startswith("/"):
                     s = urljoin(page_url or SKOOL_BASE, s)
-                videos.append({"type": "direct", "url": s})
+                if not any(v["url"] == s for v in videos):
+                    videos.append({"type": "direct", "url": s})
 
     # 3. Regex fallbacks for dynamically-loaded video URLs in scripts
     # Vimeo video IDs in scripts
@@ -116,6 +217,7 @@ def extract_video_urls(html: str, page_url: str = "") -> list:
         if not any(match in v["url"] for v in videos):
             videos.append({"type": "wistia", "url": url})
 
+    logger.info("Total videos found: %d (page: %s)", len(videos), page_url)
     return videos
 
 
@@ -162,10 +264,19 @@ def fetch_skool_page(url: str, cookie: str) -> tuple:
     Raises on error.
     """
     session = _build_session(cookie)
+    logger.info("Fetching Skool page: %s", url)
     resp = session.get(url, timeout=30)
     resp.raise_for_status()
 
     html = resp.text
+    logger.debug("Page HTML length: %d chars", len(html))
+
+    # Log a warning if we got a login redirect or empty page
+    if len(html) < 500:
+        logger.warning("Page HTML is very short (%d chars) – cookie may be invalid", len(html))
+    if "sign-in" in html.lower() or "login" in html.lower():
+        logger.warning("Page appears to be a login page – cookie may be expired")
+
     title = extract_page_title(html)
     video_urls = extract_video_urls(html, url)
 
@@ -176,17 +287,22 @@ def download_video(job_id: str) -> None:
     """
     Download a video for the given job. Runs in a background thread.
     Uses yt-dlp for robust video downloading from various providers.
+
+    This function catches ALL exceptions (including BaseException) to ensure
+    the job status is always updated, even if the thread is interrupted.
     """
     from app.jobs import get_job
 
     job = get_job(job_id)
     if not job:
+        logger.error("[%s] Job not found, cannot download", job_id)
         return
 
     settings = load_settings()
 
     try:
         update_job(job_id, {"status": "extracting", "progress_text": "Extracting video info..."})
+        logger.info("[%s] Starting download for URL: %s", job_id, job.get("url", ""))
 
         video_url = job.get("video_url", "")
         skool_url = job.get("url", "")
@@ -200,15 +316,24 @@ def download_video(job_id: str) -> None:
             if not cookie:
                 raise ValueError(
                     "No Skool cookie configured. Go to Settings and paste your "
-                    "Skool session cookie to authenticate."
+                    "Skool session cookie, or use Auto-detect to grab it from your browser."
                 )
+
             _html, title, found_videos = fetch_skool_page(skool_url, cookie)
+
             if not found_videos:
+                # Provide more helpful error message
+                html_len = len(_html) if _html else 0
                 raise ValueError(
-                    "No video found on this page. Make sure the URL points to a "
-                    "Skool lesson that contains a video, and that your cookie is valid."
+                    f"No video found on this page (HTML size: {html_len} chars). "
+                    "Possible causes:\n"
+                    "- Your cookie may have expired (try refreshing it)\n"
+                    "- The page may not contain a video\n"
+                    "- The URL may be incorrect"
                 )
+
             video_url = found_videos[0]["url"]
+            logger.info("[%s] Found video URL: %s", job_id, video_url)
             update_job(job_id, {
                 "title": title or job["title"],
                 "video_url": video_url,
@@ -237,27 +362,30 @@ def download_video(job_id: str) -> None:
 
         # Progress hook
         def progress_hook(d):
-            if d["status"] == "downloading":
-                total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
-                downloaded = d.get("downloaded_bytes", 0)
-                if total > 0:
-                    pct = int((downloaded / total) * 100)
+            try:
+                if d["status"] == "downloading":
+                    total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+                    downloaded = d.get("downloaded_bytes", 0)
+                    if total > 0:
+                        pct = int((downloaded / total) * 100)
+                        update_job(job_id, {
+                            "status": "downloading",
+                            "progress": pct,
+                            "progress_text": f"Downloading: {pct}% ({_format_size(downloaded)} / {_format_size(total)})",
+                            "file_size": _format_size(total),
+                        })
+                    else:
+                        update_job(job_id, {
+                            "status": "downloading",
+                            "progress_text": f"Downloading: {_format_size(downloaded)}",
+                        })
+                elif d["status"] == "finished":
                     update_job(job_id, {
-                        "status": "downloading",
-                        "progress": pct,
-                        "progress_text": f"Downloading: {pct}% ({_format_size(downloaded)} / {_format_size(total)})",
-                        "file_size": _format_size(total),
+                        "progress": 95,
+                        "progress_text": "Finalizing...",
                     })
-                else:
-                    update_job(job_id, {
-                        "status": "downloading",
-                        "progress_text": f"Downloading: {_format_size(downloaded)}",
-                    })
-            elif d["status"] == "finished":
-                update_job(job_id, {
-                    "progress": 95,
-                    "progress_text": "Finalizing...",
-                })
+            except Exception as hook_err:
+                logger.debug("[%s] Progress hook error: %s", job_id, hook_err)
 
         ydl_opts = {
             "format": format_spec,
@@ -267,6 +395,9 @@ def download_video(job_id: str) -> None:
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
+            "socket_timeout": 30,
+            "retries": 3,
+            "fragment_retries": 3,
         }
 
         # If cookie string is provided and the video is from Skool directly,
@@ -278,6 +409,7 @@ def download_video(job_id: str) -> None:
             }
 
         update_job(job_id, {"status": "downloading", "progress_text": "Starting download..."})
+        logger.info("[%s] Starting yt-dlp download: %s", job_id, video_url)
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
@@ -301,13 +433,18 @@ def download_video(job_id: str) -> None:
                     update_job(job_id, {"title": _sanitize_filename(video_title)})
 
                 complete_job(job_id, output_file, file_size)
-                logger.info(f"[{job_id}] Download complete: {output_file}")
+                logger.info("[%s] Download complete: %s (%s)", job_id, output_file, file_size)
             else:
                 raise RuntimeError("yt-dlp returned no info for this video")
 
     except Exception as e:
-        logger.exception(f"[{job_id}] Download failed: {e}")
+        logger.exception("[%s] Download failed: %s", job_id, e)
         fail_job(job_id, str(e))
+    except BaseException as e:
+        # Catch KeyboardInterrupt, SystemExit, etc. so the job doesn't stay stuck
+        logger.error("[%s] Download interrupted: %s", job_id, e)
+        fail_job(job_id, f"Download interrupted: {e}")
+        raise
 
 
 def fetch_course_lessons(url: str, cookie: str) -> list:
@@ -323,8 +460,20 @@ def fetch_course_lessons(url: str, cookie: str) -> list:
 
     lessons = []
 
-    # Look for lesson links - Skool uses various patterns
-    # Common: links containing /classroom/ paths
+    # Try to get lesson links from __NEXT_DATA__ first
+    next_match = re.search(
+        r'<script\s+id="__NEXT_DATA__"\s+type="application/json">(.*?)</script>',
+        html,
+        re.DOTALL,
+    )
+    if next_match:
+        try:
+            data = json.loads(next_match.group(1))
+            _find_lessons_in_json(data, lessons, url)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Also look for lesson links in HTML as fallback
     for link in soup.find_all("a", href=True):
         href = link["href"]
         if "/classroom/" in href and href != url:
@@ -334,4 +483,31 @@ def fetch_course_lessons(url: str, cookie: str) -> list:
             if not any(l["url"] == full_url for l in lessons):
                 lessons.append({"title": title, "url": full_url})
 
+    logger.info("Found %d lesson(s) on course page: %s", len(lessons), url)
     return lessons
+
+
+def _find_lessons_in_json(obj, lessons: list, base_url: str, depth: int = 0) -> None:
+    """Recursively walk JSON looking for lesson/classroom URLs."""
+    if depth > 20:
+        return
+
+    if isinstance(obj, str):
+        if "/classroom/" in obj and obj.startswith("/"):
+            full_url = urljoin(SKOOL_BASE, obj)
+            if not any(l["url"] == full_url for l in lessons):
+                lessons.append({"title": "Untitled Lesson", "url": full_url})
+    elif isinstance(obj, dict):
+        # Look for objects that have both a URL and title
+        href = obj.get("href", "") or obj.get("url", "") or obj.get("path", "")
+        title = obj.get("title", "") or obj.get("name", "") or obj.get("label", "")
+        if isinstance(href, str) and "/classroom/" in href:
+            full_url = href if href.startswith("http") else urljoin(SKOOL_BASE, href)
+            if not any(l["url"] == full_url for l in lessons):
+                lessons.append({"title": title or "Untitled Lesson", "url": full_url})
+
+        for value in obj.values():
+            _find_lessons_in_json(value, lessons, base_url, depth + 1)
+    elif isinstance(obj, list):
+        for item in obj:
+            _find_lessons_in_json(item, lessons, base_url, depth + 1)

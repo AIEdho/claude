@@ -6,6 +6,7 @@ Serves the web UI and provides the HTTP API for downloading videos.
 
 import logging
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -67,6 +68,7 @@ def startup():
     setup_logging()
     ensure_folders()
     load_all_jobs()
+    _cleanup_stale_jobs()
     logger.info("Skool Video Downloader started")
 
 
@@ -254,3 +256,24 @@ def api_extract_course(req: DownloadRequest):
 def _run_download_async(job_id: str):
     t = threading.Thread(target=download_video, args=(job_id,), daemon=True)
     t.start()
+
+
+def _cleanup_stale_jobs():
+    """Mark jobs stuck in extracting/downloading as failed on startup.
+
+    If the server was restarted while a job was in progress, those jobs
+    will be stuck forever. This marks them as failed so the user can retry.
+    """
+    stale_statuses = {"queued", "extracting", "downloading"}
+    for job in list_jobs():
+        if job.get("status") in stale_statuses:
+            logger.warning(
+                "Marking stale job %s as failed (was stuck in '%s')",
+                job["id"],
+                job["status"],
+            )
+            fail_job(
+                job["id"],
+                f"Job was stuck in '{job['status']}' status and the server was restarted. "
+                "Please try downloading again.",
+            )
