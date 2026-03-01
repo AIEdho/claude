@@ -66,9 +66,13 @@
         <label>Skool Cookie</label>
         <textarea id="s_cookie" rows="3" placeholder="Paste your Skool session cookie here..."></textarea>
       </div>
+      <div class="auto-cookie-row">
+        <button class="btn btn-primary" id="autoCookieBtn" onclick="App.autoCookie()">Auto-detect from Browser</button>
+        <span id="autoCookieStatus" class="auto-cookie-status"></span>
+      </div>
       <p class="help-text">
-        To get your cookie: Log into Skool in your browser, open DevTools (F12),
-        go to Network tab, reload the page, click any request, and copy the Cookie header value.
+        Click "Auto-detect from Browser" to automatically find your Skool cookie from Chrome, Firefox, or Edge.
+        Or manually paste it: Log into Skool, open DevTools (F12), Network tab, copy the Cookie header value.
       </p>
     </div>
 

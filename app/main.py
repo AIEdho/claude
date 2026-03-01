@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from app.browser_cookies import extract_skool_cookie
 from app.config import ensure_folders, get_settings, load_settings, update_settings
 from app.jobs import (
     complete_job,
@@ -114,6 +115,30 @@ def api_update_settings(patch: SettingsPatch):
     result = update_settings(data)
     ensure_folders(result)
     return result
+
+
+@app.post("/settings/auto-cookie")
+def api_auto_cookie():
+    """Extract Skool cookie from the user's browser automatically."""
+    result = extract_skool_cookie()
+    if result["cookie"]:
+        # Save the cookie to settings
+        update_settings({"cookie": result["cookie"]})
+        cookie = result["cookie"]
+        if len(cookie) > 12:
+            display = cookie[:4] + "..." + cookie[-4:]
+        else:
+            display = "***"
+        return {
+            "success": True,
+            "browser": result["browser"],
+            "cookie_display": display,
+        }
+    else:
+        return {
+            "success": False,
+            "error": result["error"],
+        }
 
 
 # ── API: Jobs ──────────────────────────────────────────────────────

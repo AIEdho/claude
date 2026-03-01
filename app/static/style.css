@@ -458,6 +458,24 @@ body {
   border-radius: 6px;
 }
 
+.auto-cookie-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 6px;
+}
+
+.auto-cookie-status {
+  font-size: 13px;
+  font-weight: 600;
+}
+.auto-cookie-status.success {
+  color: var(--green);
+}
+.auto-cookie-status.error {
+  color: var(--red);
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;

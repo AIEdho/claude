@@ -364,6 +364,38 @@ const App = {
     document.getElementById('settingsModal').classList.remove('open');
   },
 
+  async autoCookie() {
+    const btn = document.getElementById('autoCookieBtn');
+    const status = document.getElementById('autoCookieStatus');
+
+    btn.disabled = true;
+    btn.textContent = 'Detecting...';
+    status.textContent = '';
+    status.className = 'auto-cookie-status';
+
+    try {
+      const res = await this.api('/settings/auto-cookie', { method: 'POST' });
+      if (res.success) {
+        status.textContent = `Found in ${res.browser}!`;
+        status.className = 'auto-cookie-status success';
+        // Update the cookie display and clear the textarea (cookie is already saved)
+        this.settings.cookie_display = res.cookie_display;
+        document.getElementById('s_cookie').value = '';
+        document.getElementById('s_cookie').placeholder = `Cookie auto-detected from ${res.browser} and saved`;
+        this.updateAuthStatus();
+      } else {
+        status.textContent = res.error || 'No cookie found';
+        status.className = 'auto-cookie-status error';
+      }
+    } catch (e) {
+      status.textContent = 'Error: ' + e.message;
+      status.className = 'auto-cookie-status error';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Auto-detect from Browser';
+    }
+  },
+
   async saveSettings() {
     const patch = {
       download_path: document.getElementById('s_download_path').value,
